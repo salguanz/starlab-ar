@@ -1,12 +1,5 @@
 #pragma once
 #pragma warning (disable:4996)
-
-#include <vtkAutoInit.h>
-VTK_MODULE_INIT(vtkRenderingOpenGL2);
-VTK_MODULE_INIT(vtkInteractionStyle);
-VTK_MODULE_INIT(vtkRenderingFreeType);
-VTK_MODULE_INIT(vtkRenderingVolumeOpenGL2);
-
 #include <iostream>
 #include <algorithm>
 #include <random>
@@ -59,6 +52,7 @@ void CylinderFittingProcess(pcl::PointCloud<PointT>::Ptr cloud)
     // Estimate point normals
     ne.setSearchMethod(tree);
     ne.setInputCloud(cloud);
+
     ne.setKSearch(50);
     ne.compute(*cloud_normals);
 
