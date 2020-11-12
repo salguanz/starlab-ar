@@ -12,6 +12,7 @@
 #include <pcl/ModelCoefficients.h>
 #include <pcl/point_types.h>
 #include <pcl/filters/extract_indices.h>
+#include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/features/normal_3d.h>
@@ -76,16 +77,32 @@ void ExtractNearSet(pcl::PointCloud<PointN>::Ptr cloud, pcl::PointCloud<PointN>:
 	}
 }
 
+void RemoveOutlier(pcl::PointCloud<PointT>::Ptr cloudSrc, pcl::PointCloud<PointT>::Ptr cloudOut)
+{
+	pcl::PointCloud<PointT> pc_sor_filtered;
+	*cloudOut = *cloudSrc;
+
+	int num_neigbor_points = 5;
+	double std_multiplier = 0.5;
+
+	pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
+	sor.setInputCloud(cloudOut);
+	sor.setMeanK(num_neigbor_points);
+	sor.setStddevMulThresh(std_multiplier);
+	sor.filter(*cloudOut);
+}
+
+
 void Godeunger(pcl::PointCloud<PointT>::Ptr rawCloud)
 {
-	const int K = 50;
+	const int K = 100;
 
 	int out = 0;
 
 	pcl::PointCloud<PointN>::Ptr cloud(new pcl::PointCloud<PointN>);
 	pcl::PointCloud<PointT>::Ptr cloudCenters(new pcl::PointCloud<PointT>);
 
-
+		
 	CalculateNormal(rawCloud, cloud, 50);
 	int cloudSize = cloud->size();
 
@@ -94,40 +111,42 @@ void Godeunger(pcl::PointCloud<PointT>::Ptr rawCloud)
 	std::uniform_int_distribution<int> dist_1(0, cloudSize - 1);
 	std::uniform_int_distribution<int> dist_2(0, K - 1);
 
-	for (int i = 0; i < 500; i++)
+	for (int i = 0; i < 100; i++)
 	{
 		pcl::PointCloud<PointN>::Ptr cloudPart(new pcl::PointCloud<PointN>);
+		pcl::PointCloud<PointT>::Ptr rawCloudPartCenters(new pcl::PointCloud<PointT>);
+		pcl::PointCloud<PointT>::Ptr cloudPartCenters(new pcl::PointCloud<PointT>);
 		ExtractNearSet(cloud, cloudPart, K, dist_1(rng1));
 
 		//pcl::PointCloud<PointN>::Ptr threePoints(new pcl::PointCloud<PointN>);
 		//threePoints->points.push_back(cloudPart);
-
-		std::shuffle(cloudPart->points.begin(), cloudPart->points.end(), rng1);
-
-		float rawR = ComputeRadius(cloudPart);
-		float r;
-		bool negativeRadius = false;
-
-		if (rawR < 0)
+		for (int j = 0; j < K/10; j++)
 		{
-			negativeRadius = true;
-			r = -rawR;
-		}
-		else 
+			std::shuffle(cloudPart->points.begin(), cloudPart->points.end(), rng1);
+
+			float rawR = ComputeRadius(cloudPart);
+			float r;
+			bool negativeRadius = false;
+			if (rawR < 0)
+			{
+				negativeRadius = true;
+				r = -rawR;
+			}
+			else
 			r = rawR;
-		if (r > 0.25)
-		{
-			++out;
-			continue;
+			if (r > 0.25)
+			{
+				++out;
+				continue;
+			}
+			Eigen::Vector3f center = cloudPart->points[0].getVector3fMap() - cloudPart->points[0].getNormalVector3fMap() * rawR / 2;
+			PointT centerPoint = PointT(center.x(), center.y(), center.z());
+
+			rawCloudPartCenters->points.push_back(centerPoint);
+			std::cout << i << "-radius : " << r << std::endl;
 		}
-		Eigen::Vector3f center = cloudPart->points[0].getVector3fMap() - cloudPart->points[0].getNormalVector3fMap() * rawR/2;
-
-		PointT centerPoint = PointT(center.x(), center.y(), center.z());
-
-		cloudCenters->points.push_back(centerPoint);
-
-		std::cout << i << "-radius : "<< r << std::endl;
-		
+		RemoveOutlier(rawCloudPartCenters, cloudPartCenters);
+		*cloudCenters += *cloudPartCenters;
 	}
 
 	std::cout << "Error Rate : " << ((float)out)/500 <<std::endl;
